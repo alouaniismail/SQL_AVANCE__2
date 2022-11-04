@@ -1,0 +1,88 @@
+On va utiliser la base etendue avec donnees_etendue.sql.
+explain plan set STATEMENT_ID='nom_requête'
+for requête;
+=>plan d'execution oracle.
+Le résultat est un arbre dont chaque nœud est une opération; il est stocké dans la table PLAN_TABLE dont chaque ligne correspond à une opération et dont voici quelques champs.
+
+Pour rendre le résultat d'une requête plus lisible, on peut fixer à n la largeur d'une colonne:
+column nom_de_la_colonne format an
+(par exemple column options format a10) 
+
+On rappelle qu'on peut aussi fixer la largeur maximale d'une ligne:
+set lin n
+
+Pour le nombre de seances qu'un acteur a fait:
+select A.NOM_ACTEUR, A.PRENOM_ACTEUR, count(S.NUMERO_SEANCE)
+  from ((ACTEUR A inner join ROLE R 
+         on A.NUMERO_ACTEUR = R.NUMERO_ACTEUR)
+           inner join SEANCE S 
+             on R.NUMERO_FILM = S.NUMERO_FILM)
+  group by A.NOM_ACTEUR, A.PRENOM_ACTEUR, A.NUMERO_ACTEUR;
+retourne en sqlplus/oracle une table contenant le nom, le prenom, le nombre de seances tournées.
+(a ecrire dans requete.sql)
+
+SQL> explain plan set STATEMENT_ID='req1' for
+select A.NOM_ACTEUR, A.PRENOM_ACTEUR, count(S.NUMERO_SEANCE)
+  from ((ACTEUR A inner join ROLE R 
+         on A.NUMERO_ACTEUR = R.NUMERO_ACTEUR)
+           inner join SEANCE S 
+             on R.NUMERO_FILM = S.NUMERO_FILM)
+  group by A.NOM_ACTEUR, A.PRENOM_ACTEUR, A.NUMERO_ACTEUR;
+  
+explained.
+  
+SQL> select STATEMENT_ID, OPERATION, OPTIONS, ID ,PARENT_ID, POSITION, OBJECT_NAME from PLAN_TABLE;//table son nom.
+
+SQL> column options format a10
+SQL> /
+retour a la ligne car largeur colonne dépassée pour options en format normal par défaut.
+VOILA.
+====================
+select statement OBJECT_NAME +1nbr_noeuds de l'arbre.
+ID/PARENT_ID/POSITION(de gauche a droite): les 2 au debut suivant un travail en profondeur de l'arbre en bijection avec PLAN_TABLE.
+OPTIONS: ce qui est appliqué à l'ID.
+des feuilles vers la racine comme a la compilation.
+====================
+1/Afficher la liste des champs de la table USER_TABLES:
+desc USER_TABLES
+PUIS entree sans ;.
+2/Afficher la liste des noms de notre table:
+select TABLE_NAME from USER_TABLES;
+3/statiques pour une table (dressage) :
+analyze table ACTEUR compute statictics;
+4/afficher pour cette derniere, le nombre de ligne, la taille mémoire, la taille de chaque ligne, le nombre de blocs de la table:
+select NUM_ROWS, AVG_SPACE, AVG_ROW_LEN, BLOCKS from USER_TABLES where TABLE_NAME='ACTEUR';
+BLOCKS est bel et bien =à 5.
+==================================================
+==================================================
+
+3.Index:
+1/ajoutons un index sur l'attribut prenom acteur:
+create index PRENOM_IDX on ACTEUR(PRENOM_ACTEUR);
+(Index created.)
+2/
+explain plan set STATEMENT_ID='req2' for
+select A.NOM_ACTEUR, A.PRENOM_ACTEUR, count(S.NUMERO_SEANCE)
+  from ((ACTEUR A inner join ROLE R 
+         on A.NUMERO_ACTEUR = R.NUMERO_ACTEUR)
+           inner join SEANCE S 
+             on R.NUMERO_FILM = S.NUMERO_FILM)
+  group by A.NOM_ACTEUR, A.PRENOM_ACTEUR, A.NUMERO_ACTEUR;
+  
+  
+select OPERATION, OPTIONS, ID ,PARENT_ID, POSITION, OBJECT_NAME from PLAN_TABLE where STATEMENT_ID='req2';
+=>la présence d'index modifie le plan d'éxécution:
+Oui, selon le résultat.
+3/
+taille occupée par la struct(B-tree) mis en place par cet index:
+*analyze index PRENOM_IDX validate structure;
+*desc INDEX_STATS
+*select BTREE_SPACE from INDEX_STATS where NAME='PRENOM_IDX';
+=>ca a augmenté par rapport à AVG_LEN de PLAN_TABLE précédente.
+
+PRINCIPE d'UN INDEX:
+Un index, dans une base de données se base sur le même principe qu’un index dans un livre. Avec un index placé sur une ou plusieurs colonnes le système d’une base de données peut rechercher les données d’abord sur l’index et s’il trouve ce qu’il cherche il saura plus rapidement où se trouve les enregistrements concernés.
+
+Ces petites ressources ont toutefois leurs inconvénients car cela occupe de l’espace supplémentaire dans la base de données. Par ailleurs, l’insertion de données est plus long car les index sont mis à jour à chaque fois que des données sont insérées.
+
+Généralement un index pourra être utilisé dans les requêtes utilisant les clauses WHERE, GROUP BY ou ORDER BY. Lorsqu’une base de données possède un grand nombre d’enregistrements (exemple: plusieurs milliers ou plusieurs millions de lignes)  un index permet de gagner un temps précieux pour la lecture de données.
